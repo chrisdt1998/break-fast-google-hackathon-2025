@@ -44,11 +44,20 @@ import sqlite3
 import logging
 
 from grid import Grid, ActionNotAllowedError, InvalidMoveError, RuleViolationError
-from constants import SUBMARINE_SYSTEMS
 
 
 # Logging Setup
 logging.basicConfig(level=logging.INFO, format='%(asctime)s - %(levelname)s - %(message)s')
+
+
+SUBMARINE_SYSTEMS = [
+    "torpedo",
+    "mine",
+    "sonar",
+    "drone",
+    "silence",
+    "scenario",
+]
 
 
 # Initialize the FastMCP server
