@@ -38,11 +38,10 @@ Errors:
     All rule or sequencing violations raise subclasses of `CaptainSonarError`.
 '''
 from fastmcp import FastMCP
-from typing import List, Dict, Tuple, Optional
-from dataclasses import dataclass, field
+from typing import List, Dict
 import random
 
-from grid import Grid, Submarine, ActionNotAllowedError, InvalidMoveError, RuleViolationError, CaptainSonarError
+from grid import Grid, ActionNotAllowedError, InvalidMoveError, RuleViolationError
 
 
 # Initialize the FastMCP server
@@ -52,7 +51,7 @@ app = FastMCP("Captain Sonar Server")
 # Global Game Instance
 # ================================================================
 
-_global_game = Grid()
+_global_game = Grid.load_from_file("predefined_map.txt")
 
 
 # ================================================================
@@ -78,15 +77,12 @@ def start_game(team_names: List[str]) -> Dict:
     if len(team_names) != 2:
         raise RuleViolationError("Captain Sonar requires exactly two teams.")
 
-    global _global_game
-    _global_game = Grid.load_from_file("predefined_map.txt")
-    
     for i, t in enumerate(team_names):
         while True:
             x = random.randint(0, _global_game.width - 1)
             y = random.randint(0, _global_game.height - 1)
             if not _global_game.is_island(x, y):
-                _global_game.teams[t] = Submarine(team=t, position=(x, y))
+                _global_game.add_team(t, (x, y))
                 break
 
     _global_game.current_turn = team_names[0]
@@ -348,7 +344,7 @@ def get_state() -> Dict:
                 "surface_needed": s.surface_needed,
             }
             for t, s in g.teams.items()
-        },
+        }
     }
 
 @app.tool

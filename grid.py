@@ -85,7 +85,12 @@ class Grid:
             x, y = sub.position
             if 0 <= y < self.height and 0 <= x < self.width:
                 grid_repr[y][x] = team[0].upper()
-        return "\n".join("".join(row) for row in grid_repr)
+        grid_str = "\n".join("".join(row) for row in grid_repr)
+        if self.teams:
+            grid_str += "\n\nTeams on the grid:"
+            for team_name, sub in self.teams.items():
+                grid_str += f"\n- {team_name}: {team_name[0].upper()}"
+        return grid_str
 
     def switch_turn(self) -> None:
         """Switch the turn between teams."""
@@ -163,6 +168,12 @@ class Grid:
             
             if len(current_island) > 0:
                 island_count += 1
+
+    def add_team(self, team_name: str, position: Tuple[int, int]):
+        """Adds a new team and their submarine to the game."""
+        if team_name in self.teams:
+            raise RuleViolationError(f"Team {team_name} already exists.")
+        self.teams[team_name] = Submarine(team=team_name, position=position)
 
     def move_submarine(self, team: str, direction: str):
         sub = self.teams[team]
