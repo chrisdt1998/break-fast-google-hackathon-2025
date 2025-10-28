@@ -21,4 +21,4 @@ def get_charged_systems(tool_context: ToolContext):
     """Get the list of systems that are charged."""
     if not tool_context.state.get('systems'):
         return "No system is charged"
-    return [system for system in tool_context.state['system'] if tool_context.state['system']]
+    return [system for system in tool_context.state['system'] if tool_context.state['system'][system]]

@@ -4,7 +4,7 @@ from captain_sonar.agents.radio_operator import prompt
 
 
 def update_position_estimate(estimate: list, tool_context: ToolContext):
-    if not 'position' in tool_context.state:
+    if 'position' not in tool_context.state:
         tool_context.state['position'] = estimate
 
 

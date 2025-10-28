@@ -7,7 +7,7 @@ from captain_sonar.agents.engineer import prompt
 
 def get_random_damage(tool_context: ToolContext):
     """Check which system was damaged after a maneuver"""
-    if not 'damaged_systems' in tool_context.state:
+    if 'damaged_systems' not in tool_context.state:
         tool_context.state['damaged_systems'] = []
     print("\n\n\n===========RANDOM DAMMGE")
     print("DAMAGED STATE", tool_context.state['damaged_systems'])
