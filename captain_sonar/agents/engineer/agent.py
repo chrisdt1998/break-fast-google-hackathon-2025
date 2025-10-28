@@ -6,11 +6,18 @@ from captain_sonar.agents.engineer import prompt
 
 
 def get_random_damage(tool_context: ToolContext):
+    """Check which system was damaged after a maneuver"""
     if not 'damaged_systems' in tool_context.state:
         tool_context.state['damaged_systems'] = []
+    print("\n\n\n===========RANDOM DAMMGE")
+    print("DAMAGED STATE", tool_context.state['damaged_systems'])
     if random.random() < 0.7:
-        undamaged = [system for system in SUBMARINE_SYSTEMS if not tool_context.state['damaged_systems']]
+        undamaged = [system for system in SUBMARINE_SYSTEMS if system not in tool_context.state['damaged_systems']]
+        print(undamaged)
+        if not undamaged:
+            return "No new system was damaged"
         random_system = random.choice(undamaged)
+        print("DAMAGED:", random_system)
         tool_context.state['damaged_systems'].append(random_system)
         if len(tool_context.state['damaged_systems']) > 3:
             return "alert: 3 systems are damaged"

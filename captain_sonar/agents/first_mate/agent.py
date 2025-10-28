@@ -9,5 +9,5 @@ first_mate_agent = Agent(
     name="first_mate_agent",
     description="The First Mate in the submarine",
     instruction=prompt.FIRST_MATE_INSTURCTIONS,
-    tools=[charge_system, reset_system, take_damage, get_charged_systems]
+    tools=[charge_system, reset_system, take_damage, get_charged_systems],
 )
