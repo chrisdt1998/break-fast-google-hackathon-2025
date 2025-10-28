@@ -44,7 +44,7 @@ import sqlite3
 import logging
 
 from grid import Grid, ActionNotAllowedError, InvalidMoveError, RuleViolationError
-from captain_sonar.constants import SUBMARINE_SYSTEMS_CHARGE
+from constants import SUBMARINE_SYSTEMS
 
 
 # Logging Setup
