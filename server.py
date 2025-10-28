@@ -40,6 +40,7 @@ Errors:
 from fastmcp import FastMCP
 from typing import List, Dict
 import random
+import sqlite3
 
 from grid import Grid, ActionNotAllowedError, InvalidMoveError, RuleViolationError
 
@@ -48,11 +49,65 @@ from grid import Grid, ActionNotAllowedError, InvalidMoveError, RuleViolationErr
 app = FastMCP("Captain Sonar Server")
 
 # ================================================================
-# Global Game Instance
+# Database Setup
 # ================================================================
 
-_global_game = Grid.load_from_file("predefined_map.txt")
+DB_PATH = "captain_sonar.db"
 
+def init_db():
+    """Initializes the database and creates tables if they don't exist."""
+    conn = sqlite3.connect(DB_PATH)
+    c = conn.cursor()
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS grid (
+            width INTEGER,
+            height INTEGER,
+            grid_data TEXT
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS game_state (
+            current_turn TEXT
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS submarines (
+            team_name TEXT PRIMARY KEY,
+            position_x INTEGER,
+            position_y INTEGER,
+            health INTEGER,
+            systems TEXT,
+            gauges TEXT,
+            surface_needed INTEGER
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS submarine_paths (
+            team_name TEXT,
+            path_order INTEGER,
+            x INTEGER,
+            y INTEGER,
+            PRIMARY KEY (team_name, path_order)
+        )
+    """)
+    c.execute("""
+        CREATE TABLE IF NOT EXISTS submarine_mines (
+            team_name TEXT,
+            x INTEGER,
+            y INTEGER,
+            PRIMARY KEY (team_name, x, y)
+        )
+    """)
+    conn.commit()
+    conn.close()
+
+# Initialize the database on server start
+init_db()
+
+
+def get_game() -> Grid:
+    """Factory function to get a Grid instance representing the current game state."""
+    return Grid(db_path=DB_PATH)
 
 # ================================================================
 # FastMCP Tools / Game Actions
@@ -61,6 +116,8 @@ _global_game = Grid.load_from_file("predefined_map.txt")
 @app.tool
 def start_game(team_names: List[str]) -> Dict:
     """Initialize a new Captain Sonar turn-based match.
+
+    This will clear any existing game data.
 
     Args:
         team_names (List[str]): Two team names, e.g., ["Red", "Blue"].
@@ -77,17 +134,24 @@ def start_game(team_names: List[str]) -> Dict:
     if len(team_names) != 2:
         raise RuleViolationError("Captain Sonar requires exactly two teams.")
 
+    # Create a fresh grid from the predefined map file
+    game = Grid.load_from_file("predefined_map.txt")
+    game.db_path = DB_PATH # Assign db_path to enable saving
+
+    game.teams = {}
     for i, t in enumerate(team_names):
         while True:
-            x = random.randint(0, _global_game.width - 1)
-            y = random.randint(0, _global_game.height - 1)
-            if not _global_game.is_island(x, y):
-                _global_game.add_team(t, (x, y))
+            x = random.randint(0, game.width - 1)
+            y = random.randint(0, game.height - 1)
+            if not game.is_island(x, y):
+                game.add_team(t, (x, y))
                 break
 
-    _global_game.current_turn = team_names[0]
+    game.current_turn = team_names[0]
+    game.save_to_db() # Save the initial state
+
     return {
-        "turn": _global_game.current_turn,
+        "turn": game.current_turn,
         "teams": {
             t: {
                 "position": s.position,
@@ -98,7 +162,7 @@ def start_game(team_names: List[str]) -> Dict:
                 "mines": s.mines,
                 "surface_needed": s.surface_needed,
             }
-            for t, s in _global_game.teams.items()
+            for t, s in game.teams.items()
         },
     }
 
@@ -126,7 +190,7 @@ def captain_move(team: str, direction: str) -> Dict:
     Example:
         >>> captain_move(team="Red", direction="N")
     """
-    g = _global_game
+    g = get_game()
     if g.current_turn != team:
         raise ActionNotAllowedError(f"It's not {team}'s turn.")
     g.move_submarine(team, direction)
@@ -137,6 +201,7 @@ def captain_move(team: str, direction: str) -> Dict:
         if not sub.systems[system]: # if not already charged
             sub.gauges[system] += 1
     g.switch_turn()
+    g.save_to_db()
     return {
         "turn": g.current_turn,
         "teams": {
@@ -170,13 +235,14 @@ def surface(team: str) -> Dict:
     Example:
         >>> surface(team="Blue")
     """
-    g = _global_game
+    g = get_game()
     if g.current_turn != team:
         raise ActionNotAllowedError(f"It's not {team}'s turn.")
 
     sub = g.teams[team]
     sub.path.clear()
     g.switch_turn()
+    g.save_to_db()
     return {
         "turn": g.current_turn,
         "teams": {
@@ -196,7 +262,7 @@ def surface(team: str) -> Dict:
 @app.tool
 def drop_mine(team: str, x: int, y: int) -> Dict:
     """Drop a mine in an adjacent space."""
-    g = _global_game
+    g = get_game()
     if g.current_turn != team:
         raise ActionNotAllowedError(f"It's not {team}'s turn.")
     
@@ -211,7 +277,11 @@ def drop_mine(team: str, x: int, y: int) -> Dict:
     if g.is_island(x, y) or (x, y) in sub.path:
         raise InvalidMoveError("Cannot drop a mine on an island or your own path.")
 
+    sub.mines.append((x, y))
+    sub.systems["mine"] = False
+    sub.gauges["mine"] = 0
     g.switch_turn()
+    g.save_to_db()
     return {
         "turn": g.current_turn,
         "teams": {
@@ -231,7 +301,7 @@ def drop_mine(team: str, x: int, y: int) -> Dict:
 @app.tool
 def trigger_mine(team: str, x: int, y: int) -> Dict:
     """Trigger a mine at a specific location."""
-    g = _global_game
+    g = get_game()
     if g.current_turn != team:
         raise ActionNotAllowedError(f"It's not {team}'s turn.")
 
@@ -254,7 +324,9 @@ def trigger_mine(team: str, x: int, y: int) -> Dict:
         if other_sub.health <= 0:
             print(f"{other_team} has been sunk! {team} wins!")
 
+    sub.mines.remove((x,y))
     g.switch_turn()
+    g.save_to_db()
     return {
         "turn": g.current_turn,
         "teams": {
@@ -274,7 +346,7 @@ def trigger_mine(team: str, x: int, y: int) -> Dict:
 @app.tool
 def launch_torpedo(team: str, x: int, y: int) -> Dict:
     """Launch a torpedo at a specific location."""
-    g = _global_game
+    g = get_game()
     if g.current_turn != team:
         raise ActionNotAllowedError(f"It's not {team}'s turn.")
 
@@ -304,6 +376,7 @@ def launch_torpedo(team: str, x: int, y: int) -> Dict:
     sub.systems["torpedo"] = False
     sub.gauges["torpedo"] = 0
     g.switch_turn()
+    g.save_to_db()
     return {
         "turn": g.current_turn,
         "teams": {
@@ -330,7 +403,7 @@ def get_state() -> Dict:
     Example:
         >>> get_state()
     """
-    g = _global_game
+    g = get_game()
     return {
         "turn": g.current_turn,
         "teams": {
@@ -354,7 +427,7 @@ def get_grid_string() -> str:
     Returns:
         str: The grid as a string.
     """
-    return str(_global_game)
+    return str(get_game())
 
 
 if __name__ == "__main__":
