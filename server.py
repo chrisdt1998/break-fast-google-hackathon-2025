@@ -360,6 +360,7 @@ def get_grid_string() -> str:
     """
     return str(_global_game)
 
+
 if __name__ == "__main__":
     # Run MCP server
-    app.run(transport="http", host="127.0.0.1", port=8000)
+    app.run()
