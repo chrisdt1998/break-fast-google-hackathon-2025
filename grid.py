@@ -1,10 +1,12 @@
 import random
 from typing import List, Dict, Tuple, Optional
 from dataclasses import dataclass, field
+import sqlite3
+import json
 
-# ================================================= ================
+# ================================================= ================ 
 # Custom Exceptions
-# ================================================= ================
+# ================================================= ================ 
 
 class CaptainSonarError(Exception):
     """Base class for all Captain Sonar errors."""
@@ -23,9 +25,9 @@ class ActionNotAllowedError(CaptainSonarError):
     pass
 
 
-# ================================================= ================
+# ================================================= ================ 
 # Core Data Structures
-# ================================================= ================
+# ================================================= ================ 
 
 @dataclass
 class Submarine:
@@ -65,16 +67,126 @@ class Grid:
     """
     Represents a Captain Sonar map and game state.
     """
-    def __init__(self, width=15, height=15):
+    def __init__(self, width=15, height=15, db_path: Optional[str] = None):
         """
-        Initializes an empty map.
+        Initializes a map. If db_path is provided, loads from the database.
+        Otherwise, creates an empty map.
         """
-        self.width = width
-        self.height = height
-        self.grid = [['.' for _ in range(width)] for _ in range(height)]
+        self.db_path = db_path
+        if db_path:
+            try:
+                self._load_from_db()
+            except (sqlite3.OperationalError, CaptainSonarError):
+                # This can happen if the DB is not yet initialized.
+                # Fallback to an empty grid.
+                self.width = width
+                self.height = height
+                self.grid = [['.' for _ in range(width)] for _ in range(height)]
+                self.teams: Dict[str, Submarine] = {}
+                self.current_turn: Optional[str] = None
 
-        self.teams: Dict[str, Submarine] = {}
-        self.current_turn: Optional[str] = None
+        else:
+            self.width = width
+            self.height = height
+            self.grid = [['.' for _ in range(width)] for _ in range(height)]
+            self.teams: Dict[str, Submarine] = {}
+            self.current_turn: Optional[str] = None
+
+    def _load_from_db(self):
+        """Loads the entire game state from the SQLite database."""
+        if not self.db_path:
+            return
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+
+        # Load grid
+        c.execute("SELECT width, height, grid_data FROM grid LIMIT 1")
+        grid_row = c.fetchone()
+        if grid_row:
+            self.width, self.height, grid_data = grid_row
+            self.grid = json.loads(grid_data)
+        else:
+            conn.close()
+            raise CaptainSonarError("Database not initialized or grid table is empty.")
+
+        # Load game state
+        c.execute("SELECT current_turn FROM game_state LIMIT 1")
+        game_state_row = c.fetchone()
+        self.current_turn = game_state_row[0] if game_state_row else None
+
+        # Load submarines
+        self.teams = {}
+        c.execute("SELECT team_name, position_x, position_y, health, systems, gauges, surface_needed FROM submarines")
+        for row in c.fetchall():
+            team_name, pos_x, pos_y, health, systems_json, gauges_json, surface_needed = row
+            sub = Submarine(
+                team=team_name,
+                position=(pos_x, pos_y),
+                health=health,
+                systems=json.loads(systems_json),
+                gauges=json.loads(gauges_json),
+                surface_needed=bool(surface_needed)
+            )
+            self.teams[team_name] = sub
+
+        # Load submarine paths
+        for team_name, sub in self.teams.items():
+            c.execute("SELECT x, y FROM submarine_paths WHERE team_name = ? ORDER BY path_order ASC", (team_name,))
+            sub.path = [(r[0], r[1]) for r in c.fetchall()]
+
+        # Load submarine mines
+        for team_name, sub in self.teams.items():
+            c.execute("SELECT x, y FROM submarine_mines WHERE team_name = ?", (team_name,))
+            sub.mines = [(r[0], r[1]) for r in c.fetchall()]
+
+        conn.close()
+
+    def save_to_db(self):
+        """Saves the entire game state to the SQLite database."""
+        if not self.db_path:
+            return
+
+        conn = sqlite3.connect(self.db_path)
+        c = conn.cursor()
+
+        # Clear old data
+        c.execute("DELETE FROM grid")
+        c.execute("DELETE FROM game_state")
+        c.execute("DELETE FROM submarines")
+        c.execute("DELETE FROM submarine_paths")
+        c.execute("DELETE FROM submarine_mines")
+
+        # Save grid
+        c.execute("INSERT INTO grid (width, height, grid_data) VALUES (?, ?, ?)",
+                  (self.width, self.height, json.dumps(self.grid)))
+
+        # Save game state
+        if self.current_turn:
+            c.execute("INSERT INTO game_state (current_turn) VALUES (?)", (self.current_turn,))
+
+        # Save submarines
+        for team_name, sub in self.teams.items():
+            c.execute("""
+                INSERT INTO submarines (team_name, position_x, position_y, health, systems, gauges, surface_needed)
+                VALUES (?, ?, ?, ?, ?, ?, ?)
+            """,
+            (
+                team_name, sub.position[0], sub.position[1], sub.health,
+                json.dumps(sub.systems), json.dumps(sub.gauges), sub.surface_needed
+            ))
+
+            # Save paths
+            for i, (x, y) in enumerate(sub.path):
+                c.execute("INSERT INTO submarine_paths (team_name, path_order, x, y) VALUES (?, ?, ?, ?)",
+                          (team_name, i, x, y))
+
+            # Save mines
+            for x, y in sub.mines:
+                c.execute("INSERT INTO submarine_mines (team_name, x, y) VALUES (?, ?, ?)",
+                          (team_name, x, y))
+
+        conn.commit()
+        conn.close()
 
     def __str__(self):
         """

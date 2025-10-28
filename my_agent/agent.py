@@ -6,7 +6,7 @@ from google.adk.tools.mcp_tool.mcp_session_manager import StdioConnectionParams
 from mcp import StdioServerParameters
 
 # IMPORTANT: Replace this with the ABSOLUTE path to your my_adk_mcp_server.py script
-PATH_TO_YOUR_MCP_SERVER_SCRIPT = "/home/odoo/src/break-fast-google-hackathon-2025/server.py" # <<< REPLACE
+PATH_TO_YOUR_MCP_SERVER_SCRIPT = "/home/dpro/workspaces/break-fast-google-hackathon-2025/server.py" # <<< REPLACE
 
 mcp_submarine = MCPToolset(
     connection_params=StdioConnectionParams(
@@ -19,7 +19,7 @@ mcp_submarine = MCPToolset(
 )
 
 root_agent = LlmAgent(
-    model='gemini-2.0-flash',
+    model='gemini-2.5-flash',
     name='web_reader_mcp_client_agent',
     instruction="Use the 'load_web_page' tool to fetch content from a URL provided by the user.",
     tools=[
