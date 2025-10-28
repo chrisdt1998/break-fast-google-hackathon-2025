@@ -1,12 +1,21 @@
 from google.adk.agents import Agent
-from captain_sonar.agents.radio_operator.tools import detect_enemy
+from google.adk.tools import ToolContext
+from captain_sonar.agents.radio_operator import prompt
 
-from captain_sonar.agents.radio_operator.prompt import RADIO_OPERATOR_AGENT_PROMPT
+
+def update_position_estimate(estimate: list, tool_context: ToolContext):
+    if not 'position' in tool_context.state:
+        tool_context.state['position'] = estimate
+
+
+def get_estimated_position(tool_context: ToolContext):
+    return tool_context.state.get('position')
+
 
 radio_operator_agent = Agent(
     model="gemini-2.5-flash",
     name="radio_operator_agent",
-    description="The Radio Operator in the submarine",
-    instruction=RADIO_OPERATOR_AGENT_PROMPT,
-    tools=[detect_enemy]
+    description="The Radio Operator of the submarine",
+    instruction=prompt.RADIO_OPERATOR_INSTURCTIONS,
+    tools=[update_position_estimate, get_estimated_position]
 )
